@@ -1,0 +1,15 @@
+#preview
+{
+    overflow: hidden;
+    margin: 10px;
+    position: relative;
+}
+
+#preview img {
+    display: block;
+    max-width: 1200px;
+    max-height:1200px;
+    width: auto;
+    height: auto;
+}
+
