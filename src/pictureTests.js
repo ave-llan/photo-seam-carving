@@ -109,12 +109,33 @@ function cropToSquare() {
 }
 
 function carveToSquare() {
+    //logEnergy(seamCarver);
     while (seamCarver.width() > seamCarver.height()) {
         seamCarver.removeVerticalSeam();
     }
+    //seamCarver.removeVerticalSeam();
+    //console.log("\n...removing one vertical seam...");
+    //logEnergy(seamCarver);
     var carvedCanvas = seamCarver.toCanvas();
     preview.appendChild(carvedCanvas);
 }
+
+function logEnergy(carver) {
+    var W = seamCarver.width();
+    var H = seamCarver.height();
+    var energyOutput = "PIXEL ENERGY:";
+    for (var y = 0; y < H; y++) {
+        energyOutput += "\n";
+        for (var x = 0; x < W; x++) {
+            var energyCell = "" + carver.energyAt(x,y) + "  ";
+            while (energyCell.length < 8)
+                energyCell += " ";
+            energyOutput += energyCell;
+        }
+    }
+    console.log(energyOutput);
+}
+
 
 // extracts pixel data from canvas
 function getImageData() {

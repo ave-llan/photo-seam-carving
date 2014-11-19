@@ -55,7 +55,7 @@ SeamCarver.prototype = {
         var verticalSeam = this.findVerticalSeam();
         this.picture.removeVerticalSeam(verticalSeam);
         // TODO write function to update energy of affected instead of all pixels
-        this.buildEnergy();
+        this.energy = this.buildEnergy();
     },
 
     findVerticalSeam: function() {
