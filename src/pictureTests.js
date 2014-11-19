@@ -1,5 +1,6 @@
 var Picture = require('./Picture.js');
 var Color = require('./Color.js');
+var SeamCarver = require('./SeamCarver.js');
 
 /***********************************************************
 ** Set up a file uploader and wait for user to
@@ -20,6 +21,7 @@ var cx;
 var imageData;
 var pixelData;
 var picture;
+var seamCarver;
 
 function handleFiles() {
     var fileList = this.files;
@@ -58,9 +60,14 @@ function handleFiles() {
             cx.drawImage(img, 0, 0);
             // display only for bug checking
 
-            preview.appendChild(canvas);
+            // preview.appendChild(canvas);
             picture = new Picture(canvas); //!!! Here is the Picture test
-            makePictureBlue();
+            seamCarver = new SeamCarver(picture);
+            // console.log("Energy for picture: ");
+            // console.log(seamCarver.energy);
+            // console.log("Vertical seam: ");
+            // console.log(seamCarver.findVerticalSeam());
+            carveToSquare();
         };
         reader.readAsDataURL(file);
     }
@@ -80,6 +87,33 @@ function makePictureBlue() {
     var colorCheck = picture.at(2,7);
     console.log("Color at 2,7 is " + colorCheck);
     console.log("alpha = " + colorCheck.alpha);
+}
+
+function cropToSquare() {
+    if (picture.width() > picture.height()) {
+        console.log("original width: " + picture.width());
+        var columnsToRemove = picture.width() - picture.height();
+        picture.removeColumns(picture.height(), columnsToRemove);
+        canvas = picture.toCanvas();
+        preview.appendChild(canvas);
+        console.log(" cropped width: " + picture.width());
+    }
+    else {
+        console.log("original height: " + picture.height());
+        var rowsToRemove = picture.height() - picture.width();
+        picture.removeRows(picture.width(), rowsToRemove);
+        canvas = picture.toCanvas();
+        preview.appendChild(canvas);
+        console.log(" cropped height: " + picture.height());
+    }
+}
+
+function carveToSquare() {
+    while (seamCarver.width() > seamCarver.height()) {
+        seamCarver.removeVerticalSeam();
+    }
+    var carvedCanvas = seamCarver.toCanvas();
+    preview.appendChild(carvedCanvas);
 }
 
 // extracts pixel data from canvas

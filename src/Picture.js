@@ -2,7 +2,6 @@ var Color = require('./Color.js');
 
 // Represents a picture made up of pixels
 // Provides access to individual pixels
-// can output in canvass, img
 
 // TODOs
 // HTMLCanvasElement.toBlob() use this to output jpeg and png etc
@@ -23,6 +22,19 @@ var Color = require('./Color.js');
 *
 * Picture.height()
 *   returns height in pixels
+*
+* Picture.at(x, y)
+*   returns the Color of pixel at position x, y
+*
+* Picture.set(x, y, Color)
+*   sets pixel x, y to Color
+*
+* Picture.toCanvas()
+*   returns a new canvas of picture in current state
+*
+* Picture.removeColumns(x[, howMany])
+*   removes howMany columns starting at index x. howMany defaults to 1.
+*
 ********************************************************************/
 
 function Picture() {
@@ -77,6 +89,43 @@ function Picture() {
             updated = false;
         pixels[y * canvasWidth + x] = color;
     };
+    this.removeColumns = function(x, howMany) {
+        if (typeof howMany === "undefined")
+            howMany = 1;
+        if (x < 0 || x + howMany > canvasWidth)
+            throw new Error("Index out of bounds.  Picture is " + canvasWidth + " wide. Requested to remove " + howMany +
+            " columns starting at index " + x + ".");
+        if (updated)
+            updated = false;
+        for (var y = canvasHeight - 1; y >= 0; y--) {
+            pixels.splice(y * canvasWidth + x, howMany);
+        }
+        canvasWidth -= howMany;
+    }
+    this.removeRows = function(y, howMany) {
+        if (typeof howMany === "undefined")
+            howMany = 1;
+        if (y < 0 || y + howMany > canvasHeight)
+            throw new Error("Index out of bounds.  Picture has height of " + canvasHeight + ". Requested to remove " + howMany +
+            " rows starting at index " + y + ".");
+        if (updated)
+            updated = false;
+        pixels.splice(y * canvasWidth, canvasWidth * howMany);
+        canvasHeight -= howMany;
+    }
+
+    this.removeVerticalSeam = function(seam) {
+        if (seam.length != canvasHeight)
+            throw new Error("Invalid vertical seam length. Picture height = " + canvasHeight + " and Seam.length = " + seam.length);
+        if (updated)
+            updated = false;
+        for (var y = canvasHeight - 1; y >= 0; y--) {
+            pixels.splice(y * canvasWidth + seam[y], 1);
+        }
+        canvasWidth--;
+        console.log("Seam removed!");
+    },
+
     this.toCanvas = function() {
         if (updated)
             return canvas;

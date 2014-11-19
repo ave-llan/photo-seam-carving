@@ -26,7 +26,6 @@ var Color = require('./Color.js');
 
 // Represents a picture made up of pixels
 // Provides access to individual pixels
-// can output in canvass, img
 
 // TODOs
 // HTMLCanvasElement.toBlob() use this to output jpeg and png etc
@@ -47,6 +46,19 @@ var Color = require('./Color.js');
 *
 * Picture.height()
 *   returns height in pixels
+*
+* Picture.at(x, y)
+*   returns the Color of pixel at position x, y
+*
+* Picture.set(x, y, Color)
+*   sets pixel x, y to Color
+*
+* Picture.toCanvas()
+*   returns a new canvas of picture in current state
+*
+* Picture.removeColumns(x[, howMany])
+*   removes howMany columns starting at index x. howMany defaults to 1.
+*
 ********************************************************************/
 
 function Picture() {
@@ -101,6 +113,43 @@ function Picture() {
             updated = false;
         pixels[y * canvasWidth + x] = color;
     };
+    this.removeColumns = function(x, howMany) {
+        if (typeof howMany === "undefined")
+            howMany = 1;
+        if (x < 0 || x + howMany > canvasWidth)
+            throw new Error("Index out of bounds.  Picture is " + canvasWidth + " wide. Requested to remove " + howMany +
+            " columns starting at index " + x + ".");
+        if (updated)
+            updated = false;
+        for (var y = canvasHeight - 1; y >= 0; y--) {
+            pixels.splice(y * canvasWidth + x, howMany);
+        }
+        canvasWidth -= howMany;
+    }
+    this.removeRows = function(y, howMany) {
+        if (typeof howMany === "undefined")
+            howMany = 1;
+        if (y < 0 || y + howMany > canvasHeight)
+            throw new Error("Index out of bounds.  Picture has height of " + canvasHeight + ". Requested to remove " + howMany +
+            " rows starting at index " + y + ".");
+        if (updated)
+            updated = false;
+        pixels.splice(y * canvasWidth, canvasWidth * howMany);
+        canvasHeight -= howMany;
+    }
+
+    this.removeVerticalSeam = function(seam) {
+        if (seam.length != canvasHeight)
+            throw new Error("Invalid vertical seam length. Picture height = " + canvasHeight + " and Seam.length = " + seam.length);
+        if (updated)
+            updated = false;
+        for (var y = canvasHeight - 1; y >= 0; y--) {
+            pixels.splice(y * canvasWidth + seam[y], 1);
+        }
+        canvasWidth--;
+        console.log("Seam removed!");
+    },
+
     this.toCanvas = function() {
         if (updated)
             return canvas;
@@ -122,13 +171,10 @@ function dataToPixels(data) {
     return pixels;
 }
 
-
-
 Picture.prototype = {
     constructor: Picture,
 
     buildNewCanvas: function (w, h, pixels) {
-        console.log("Building new canvas!");
         var canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
@@ -146,7 +192,6 @@ Picture.prototype = {
         }
         cx.putImageData(imageData, 0, 0);
         console.log(canvas);
-        //console.log(imageData);
         return canvas;
     }
 }
@@ -154,7 +199,132 @@ Picture.prototype = {
 module.exports = Picture;
 },{"./Color.js":1}],3:[function(require,module,exports){
 var Picture = require('./Picture.js');
+
+function SeamCarver(pic) {
+    this.picture = pic;
+    this.energy = this.buildEnergy();
+}
+
+SeamCarver.prototype = {
+    constructor: SeamCarver,
+
+    width: function() {
+        return this.picture.width();
+    },
+
+    height: function() {
+        return this.picture.height();
+    },
+
+    energyAt: function(x, y) {
+        return this.energy[y * this.width() + x];
+    },
+
+    buildEnergy: function() {
+        var energy = [];
+        var W = this.width();
+        var H = this.height();
+        for (var y = 0; y < H; y++) {
+            for (var x = 0; x < W; x++) {
+                energy[y * W + x] = this.calculateEnergyAt(x, y);
+            }
+        }
+        return energy;
+    },
+
+    // to find energy of a pixel, find the sum of the square of the differences between red, green, and blue components of neighbor pixels
+    // calculate the difference left to right and then above to below and add the results
+    calculateEnergyAt: function(x, y) {
+        // border pixels receive max energy 255^2 + 255^2 + 255^2 = 195075.
+        if (x == 0 || y == 0 || x == this.width() - 1 || y == this.height() - 1)
+            return 195075;
+        var left  = this.picture.at(x - 1, y);
+        var right = this.picture.at(x + 1, y);
+        var above = this.picture.at(x, y - 1);
+        var below = this.picture.at(x, y + 1);
+        var xGradient = (left.red   - right.red)    * (left.red   - right.red) + 
+                        (left.green - right.green)  * (left.green - right.green) + 
+                        (left.blue  - right.blue)   * (left.blue  - right.blue);
+        var yGradient = (above.red   - below.red)   * (above.red   - below.red) +
+                        (above.green - below.green) * (above.green - below.green) +
+                        (above.blue  - below.blue)  * (above.blue  - below.blue);
+        return xGradient + yGradient;
+    },
+
+    removeVerticalSeam: function() {
+        var verticalSeam = this.findVerticalSeam();
+        this.picture.removeVerticalSeam(verticalSeam);
+        // TODO write function to update energy of affected instead of all pixels
+        this.buildEnergy();
+    },
+
+    findVerticalSeam: function() {
+        var distTo = [];       // value represents the total energy needed to get to this pixel
+        var edgeTo = [];       // value represents previous x index on shortest path to this value.
+        var W = this.width();
+        var H = this.height();
+
+        // initialize first row of distTo to 0
+        distTo[0] = [];
+        edgeTo[0] = [];
+        for (var x = 0; x < W; x++) {
+            distTo[0][x] = 0;
+            edgeTo[0][x] = null;
+        }
+
+        // initialize all other rows to infinity
+        for (var y = 1; y < H; y++) {
+            distTo[y] = [];
+            edgeTo[y] = [];
+            for (var x = 0; x < W; x++) {
+                distTo[y][x] = Infinity; 
+                edgeTo[y][x] = null;
+            }
+        }
+
+        // find shortest paths from top to bottom
+        for (var y = 0; y < H - 1; y++) {
+            for (var x = 0; x < W; x++) {
+                // relax children
+                for (var i = -1; i <= 1; i++) {  // look at three pixels below this pixel
+                    if (x + i < 0 || x + i >= W) // if index would be out of bounds, continue
+                        continue;
+                    if (distTo[y + 1][x + i] > distTo[y][x] + this.energyAt(x, y)) {  // if true, a lower energy path has been found
+                        edgeTo[y + 1][x + i] = x;
+                        distTo[y + 1][x + i] = distTo[y][x] + this.energyAt(x, y);
+                    }
+                }
+            }
+        }
+
+        // find the shortest path
+        var endPoint = 0;
+        for (var i = 1; i < W; i++) {
+            if (distTo[H - 1][i] < distTo[H - 1][endPoint])
+                endPoint = i;
+        }
+        var verticalSeam = [endPoint];
+        for (var h = H - 2; h >= 0; h--) {
+            verticalSeam.unshift(edgeTo[h + 1][verticalSeam[0]]);  // find previous pixel in edgeTo
+        }
+        return verticalSeam;
+    },
+
+    toCanvas: function() {
+        return this.picture.toCanvas();
+    }
+
+}
+
+
+
+
+
+module.exports = SeamCarver;
+},{"./Picture.js":2}],4:[function(require,module,exports){
+var Picture = require('./Picture.js');
 var Color = require('./Color.js');
+var SeamCarver = require('./SeamCarver.js');
 
 /***********************************************************
 ** Set up a file uploader and wait for user to
@@ -175,6 +345,7 @@ var cx;
 var imageData;
 var pixelData;
 var picture;
+var seamCarver;
 
 function handleFiles() {
     var fileList = this.files;
@@ -213,9 +384,14 @@ function handleFiles() {
             cx.drawImage(img, 0, 0);
             // display only for bug checking
 
-            preview.appendChild(canvas);
+            // preview.appendChild(canvas);
             picture = new Picture(canvas); //!!! Here is the Picture test
-            makePictureBlue();
+            seamCarver = new SeamCarver(picture);
+            // console.log("Energy for picture: ");
+            // console.log(seamCarver.energy);
+            // console.log("Vertical seam: ");
+            // console.log(seamCarver.findVerticalSeam());
+            carveToSquare();
         };
         reader.readAsDataURL(file);
     }
@@ -235,6 +411,33 @@ function makePictureBlue() {
     var colorCheck = picture.at(2,7);
     console.log("Color at 2,7 is " + colorCheck);
     console.log("alpha = " + colorCheck.alpha);
+}
+
+function cropToSquare() {
+    if (picture.width() > picture.height()) {
+        console.log("original width: " + picture.width());
+        var columnsToRemove = picture.width() - picture.height();
+        picture.removeColumns(picture.height(), columnsToRemove);
+        canvas = picture.toCanvas();
+        preview.appendChild(canvas);
+        console.log(" cropped width: " + picture.width());
+    }
+    else {
+        console.log("original height: " + picture.height());
+        var rowsToRemove = picture.height() - picture.width();
+        picture.removeRows(picture.width(), rowsToRemove);
+        canvas = picture.toCanvas();
+        preview.appendChild(canvas);
+        console.log(" cropped height: " + picture.height());
+    }
+}
+
+function carveToSquare() {
+    while (seamCarver.width() > seamCarver.height()) {
+        seamCarver.removeVerticalSeam();
+    }
+    var carvedCanvas = seamCarver.toCanvas();
+    preview.appendChild(carvedCanvas);
 }
 
 // extracts pixel data from canvas
@@ -271,4 +474,4 @@ function elt(name, attributes) {
   }
   return node;
 }
-},{"./Color.js":1,"./Picture.js":2}]},{},[3]);
+},{"./Color.js":1,"./Picture.js":2,"./SeamCarver.js":3}]},{},[4]);
