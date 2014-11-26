@@ -1,7 +1,6 @@
 var Picture = require('./Picture.js');
-var Timer   = require('./Timer.js');
 
-function SeamCarver(pic) {
+function EnergyCarver(pic) {
     this.picture = pic;
     this.energy = this.buildEnergy();
 }
@@ -22,13 +21,17 @@ SeamCarver.prototype = {
     },
 
     buildEnergy: function() {
+        var energy = [];
         var W = this.width();
         var H = this.height();
-        var energy = new Array(W * H);
-        var index = 0;
         for (var y = 0; y < H; y++) {
             for (var x = 0; x < W; x++) {
-                energy[index++] = this.calculateEnergyAt(x, y);
+                var e = this.calculateEnergyAt(x, y);
+                energy[y * W + x] = e;
+                // create energy property on color and assign value
+                var pixel = this.picture.at(x, y);
+                pixel.energy = e;
+                pixel.removed = false;
             }
         }
         return energy;
@@ -36,6 +39,8 @@ SeamCarver.prototype = {
 
     // to find energy of a pixel, find the sum of the square of the differences between red, green, and blue components of neighbor pixels
     // calculate the difference left to right and then above to below
+    // !!!attach the result to the Color pixel
+    // TODO once adding energy to color is debugged, remove the return statement
     calculateEnergyAt: function(x, y) {
         // border pixels receive max energy 255^2 + 255^2 + 255^2 = 195075.
         if (x == 0 || y == 0 || x == this.width() - 1 || y == this.height() - 1)
@@ -54,42 +59,20 @@ SeamCarver.prototype = {
     },
 
     removeVerticalSeam: function() {
-        console.log("\n");
-        var timer = new Timer("1.         findVerticalSeam");
         var verticalSeam = this.findVerticalSeam();
-        timer.logElapsedTime();
-        
-        timer = new Timer("3.              carveColumn");
-        this.carveColumn(verticalSeam);
-        timer.logElapsedTime();
-
-        timer = new Timer("2. updateVerticalSeamEnergy");
         this.updateVerticalSeamEnergy(verticalSeam);   // must call this BEFORE removing seam or width will be one too short
-        timer.logElapsedTime();
-
-        /*
-        timer = new Timer("4.              buildEnergy");
-        this.energy = this.buildEnergy();
-        timer.logElapsedTime();
-        */
-        console.log("\n");
+        this.picture.removeVerticalSeam(verticalSeam);
+        //this.energy = this.buildEnergy();
     },
 
     updateVerticalSeamEnergy: function(seam) {
-        var W = this.width() + 1;         // picture has already been carved and this needs the old width
+        var W = this.width();
         var H = this.height();
         var energy = this.energy;
-        var newEnergy = new Array((W - 1) * H);
-        var index = 0;
-        for (var y = 0; y < H; y++) {
-            for (var x = 0; x < W; x++) {
-                if (seam[y] != x) {
-                    newEnergy[index++] = energy[y * W + x];
-                }
-            }
+        for (var y = H - 1; y >= 0; y--) {
+            energy.splice(y * W + seam[y], 1);
         }
-        energy = newEnergy;
-        W--;                              // width is now correct
+        W--; // width is now one less
         for (var y = 1; y < H - 1; y++) { // skip first and last rows because they will not change
             if (seam[y] - 1 >= 0) {       // if in bounds, update energy on the left side of the seam
                 energy[y * W + seam[y] - 1] = this.calculateEnergyAt(seam[y] - 1, y);
@@ -98,7 +81,6 @@ SeamCarver.prototype = {
                 energy[y * W + seam[y]] = this.calculateEnergyAt(seam[y], y);
             }
         }
-        this.energy = energy;
     },
 
     findVerticalSeam: function() {
@@ -155,33 +137,9 @@ SeamCarver.prototype = {
 
     toCanvas: function() {
         return this.picture.toCanvas();
-    },
-
-    // returns a new picture object with the given vertical seam removed
-    carveColumn: function(seam) {
-        if (seam.length != this.height())
-            throw new Error("Invalid vertical seam length. Picture height = " + this.height() + " and Seam.length = " + seam.length);
-        var W = this.width();
-        var H = this.height();
-        var data = this.picture.data();
-        var newData = new Uint8ClampedArray((W - 1) * H * 4);
-
-        // copy data (minus seam) to newData
-        var newIndex = 0;
-        for (var y = 0; y < H; y++) {
-            for (var x = 0; x < W; x++) {
-                if (seam[y] != x) {
-                    var oldIndex = y * W * 4 + x * 4
-                    newData[newIndex++] = data[oldIndex++];    // Red
-                    newData[newIndex++] = data[oldIndex++];    // Green
-                    newData[newIndex++] = data[oldIndex++];    // Blue
-                    newData[newIndex++] = data[oldIndex];      // alpha
-                }
-            }
-        }
-        this.picture = new Picture(newData, W - 1, H);        
     }
 
 }
 
-module.exports = SeamCarver;
+
+module.exports = EnergyCarver;

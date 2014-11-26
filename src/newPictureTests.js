@@ -63,6 +63,7 @@ function handleFiles() {
 
             // preview.appendChild(canvas);
             picture = new Picture(canvas); //!!! Here is the Picture test
+            // makePictureBlue();
             seamCarver = new SeamCarver(picture);
             // console.log("Energy for picture: ");
             // console.log(seamCarver.energy);
@@ -83,13 +84,45 @@ function makePictureBlue() {
             picture.set(w, h, blue);
         }
     }
-    canvas = picture.toCanvas();
-    preview.appendChild(canvas);
-    var colorCheck = picture.at(2,7);
-    console.log("Color at 2,7 is " + colorCheck);
-    console.log("alpha = " + colorCheck.alpha);
+    newCanvas = picture.toCanvas();
+    preview.appendChild(newCanvas);
+    console.log("newCanvas width  = " + newCanvas.width);
+    console.log("newCanvas height = " + newCanvas.height);
+    var data = picture.data();
+    for (var i = 0; i < data.length; i++) {
+        data[i++] = 94;
+        data[i++] = 133;
+        data[i++] = 72;
+        data[i]   = 255;
+    }
+    var dataPicture = new Picture(data, W, H);
+    newestCanvas = dataPicture.toCanvas();
+    preview.appendChild(newestCanvas);
+    console.log("newestCanvas width  = " + newestCanvas.width);
+    console.log("newestCanvas height = " + newestCanvas.height);
+
+
 }
 
+function carveToSquare() {
+    //logEnergy(seamCarver);
+    var totalTimer = new Timer("\ncarveToSquare");
+    while (seamCarver.width() > seamCarver.height()) {
+        console.log("____________");
+        var timer = new Timer("Whole seam removal operation");
+        seamCarver.removeVerticalSeam();
+        timer.logElapsedTime();
+        console.log("____________\n\n\n");
+    }
+    totalTimer.logElapsedTime();
+    //seamCarver.removeVerticalSeam();
+    //console.log("\n...removing one vertical seam...");
+    //logEnergy(seamCarver);
+    var carvedCanvas = seamCarver.toCanvas();
+    preview.appendChild(carvedCanvas);
+}
+
+/*
 function cropToSquare() {
     if (picture.width() > picture.height()) {
         console.log("original width: " + picture.width());
@@ -109,21 +142,6 @@ function cropToSquare() {
     }
 }
 
-function carveToSquare() {
-    //logEnergy(seamCarver);
-    while (seamCarver.width() > seamCarver.height()) {
-        console.log("____________");
-        var timer = new Timer("Whole seam removal operation");
-        seamCarver.removeVerticalSeam();
-        timer.logElapsedTime();
-        console.log("____________\n\n\n")
-    }
-    //seamCarver.removeVerticalSeam();
-    //console.log("\n...removing one vertical seam...");
-    //logEnergy(seamCarver);
-    var carvedCanvas = seamCarver.toCanvas();
-    preview.appendChild(carvedCanvas);
-}
 
 function logEnergy(carver) {
     var W = seamCarver.width();
@@ -157,7 +175,7 @@ function logPixelData() {
     }
     cx.putImageData(imageData, 0, 0);
 }
-
+*/
 
 
 // helper function that creates a DOM element and assigns attributes

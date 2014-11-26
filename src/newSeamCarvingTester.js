@@ -23,61 +23,42 @@ Color.prototype = {
 module.exports = Color;
 },{}],2:[function(require,module,exports){
 var Color = require('./Color.js');
-var Timer = require('./Timer.js');
+// var Timer = require('./Timer.js');
 
 // Represents a picture made up of pixels
 // Provides access to individual pixels
-
-// TODOs
-// HTMLCanvasElement.toBlob() use this to output jpeg and png etc
-// HTMLCanvasElement.toDataURL() to create html <img> 
-
-
-/********************************************************************
-* Picture(width, height) 
-*   Initializes a new width-by-height Picture.
-*   width and height must be positive integers
-*
-* Picture(canvas)
-*   Initializes a new Picture from an existing canvas 
-*   (creates a deep copy of the reference canvas)
-*
-* Picture.width()
-*   returns width in pixels
-*
-* Picture.height()
-*   returns height in pixels
-*
-* Picture.at(x, y)
-*   returns the Color of pixel at position x, y
-*
-* Picture.set(x, y, Color)
-*   sets pixel x, y to Color
-*
-* Picture.toCanvas()
-*   returns a new canvas of picture in current state
-*
-* Picture.removeColumns(x[, howMany])
-*   removes howMany columns starting at index x. howMany defaults to 1.
-*
-********************************************************************/
+// Constructor options: 
+//          Picture(width, height)
+//          Picture(canvas)
+//          Picture(Uint8ClampedArray)
 
 function Picture() {
     "use strict";
-    var canvas, cx, canvasWidth, canvasHeight, imageData, data, updated, pixels;
-    if (arguments.length == 0 || arguments.length > 2)
+    var width, height, data;
+
+    if (arguments.length == 0 || arguments.length > 3)
         throw new Error("Invalid Arguments length.  arguments.length = " + arguments.length);
-    if (arguments.length == 2) {     // arguments: Number width, Number height
-        var width  = arguments[0];
-        var height = arguments[1];
-        // check that arguments are positve integers
-        if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0 || width != parseInt(width) || height != parseInt(height))
-            throw new Error("Arguments are not positive integers:\nwidth = " + width + " height = " + height);
-        canvas = document.createElement("canvas");
-        canvas.width  = width;
-        canvas.height = height;
-        cx = canvas.getContext("2d");
+    
+    // arguments: data, width, height
+    if (arguments.length == 3) {
+        data = arguments[0];
+        width = arguments[1];
+        height = arguments[2];
+        if (!(data instanceof Uint8ClampedArray)) {
+            throw new Error("Argument is not a Uint8ClampedArray. Argument is instanceof " + data.constructor.name);
+        }
+        checkWidthAndHeight(width, height); 
     }
+
+    // arguments:  width,  height
+    else if (arguments.length == 2) {     
+        width  = arguments[0];
+        height = arguments[1];
+        // check that arguments are positve integers
+        checkWidthAndHeight(width, height);
+        data = new Uint8ClampedArray(width * height * 4);
+    }
+
     else {  // arguments.length = 1
         var referenceCanvas = arguments[0];
         if (!(referenceCanvas instanceof HTMLCanvasElement))
@@ -86,123 +67,87 @@ function Picture() {
             throw new Error("Canvas given as argument must have width and height greater than 0. Width = " + 
                             referenceCanvas.width + " height = " + referenceCanvas.height);
         // create a deep copy of canvas
-        canvas = document.createElement("canvas");
-        cx = canvas.getContext("2d");
-        canvas.width = referenceCanvas.width;
-        canvas.height = referenceCanvas.height;
-        cx.drawImage(referenceCanvas, 0, 0);
+        width = referenceCanvas.width;
+        height = referenceCanvas.height;
+        var cx = referenceCanvas.getContext("2d");
+        var imageData = cx.getImageData(0, 0, width, height);
+        data = imageData.data;
     }
-
-    canvasWidth  = canvas.width;
-    canvasHeight = canvas.height;
-    imageData = cx.getImageData(0, 0, canvasWidth, canvasHeight);
-    data = imageData.data;
-    pixels = dataToPixels(data);
-    updated = true;        // true when data matches pixels
 
     this.width  = function() {
-        return canvasWidth;
+        return width;
     };
+
     this.height = function() {
-        return canvasHeight;
+        return height;
     };
-    this.at = function(x, y) {
-        return pixels[y * canvasWidth + x];
-    };
-    this.set = function (x, y, color) {
-        if (updated)
-            updated = false;
-        pixels[y * canvasWidth + x] = color;
-    };
-    this.removeColumns = function(x, howMany) {
-        if (typeof howMany === "undefined")
-            howMany = 1;
-        if (x < 0 || x + howMany > canvasWidth)
-            throw new Error("Index out of bounds.  Picture is " + canvasWidth + " wide. Requested to remove " + howMany +
-            " columns starting at index " + x + ".");
-        if (updated)
-            updated = false;
-        for (var y = canvasHeight - 1; y >= 0; y--) {
-            pixels.splice(y * canvasWidth + x, howMany);
-        }
-        canvasWidth -= howMany;
-    }
-    this.removeRows = function(y, howMany) {
-        if (typeof howMany === "undefined")
-            howMany = 1;
-        if (y < 0 || y + howMany > canvasHeight)
-            throw new Error("Index out of bounds.  Picture has height of " + canvasHeight + ". Requested to remove " + howMany +
-            " rows starting at index " + y + ".");
-        if (updated)
-            updated = false;
-        pixels.splice(y * canvasWidth, canvasWidth * howMany);
-        canvasHeight -= howMany;
+
+    // returns index number in data for this pixels first byte (red)
+    this.getDataIndex = function(x, y) {
+        return y * width * 4 + x * 4; 
     }
 
-    this.removeVerticalSeam = function(seam) {
-        if (seam.length != canvasHeight)
-            throw new Error("Invalid vertical seam length. Picture height = " + canvasHeight + " and Seam.length = " + seam.length);
-        if (updated)
-            updated = false;
-        for (var y = canvasHeight - 1; y >= 0; y--) {
-            pixels.splice(y * canvasWidth + seam[y], 1);
-        }
-        canvasWidth--;
-        console.log("Seams removed!");
-    },
+    // returns the Color of the pixel located at x,y
+    this.at = function(x, y) {
+        var i = this.getDataIndex(x, y);
+        return new Color(data[i], data[i+1], data[i+2], data[i+3]);   // access Red, Green, Blue, Alpha  
+    };
+
+    // sets the pixel at x, y to be the given color
+    this.set = function (x, y, color) {
+        var i = this.getDataIndex(x, y);
+        data[i]     = color.red;
+        data[i + 1] = color.green;
+        data[i + 2] = color.blue;
+        data[i + 3] = color.alpha;
+    };
+
+    // returns a Uint8ClampedArray representing pixel data (RGBA)
+    this.data = function() {
+        return data;
+    };
 
     this.toCanvas = function() {
-        if (updated)
-            return canvas;
-        else {
-            var timer = new Timer("\nbuildNewCanvas (pixels to Uint8ClampedArray)");
-            canvas = this.buildNewCanvas(canvasWidth, canvasHeight, pixels);
-            timer.logElapsedTime();
-            updated = true;
-            return canvas;
-        }
+        var newData = new ImageData(data, width, height);
+        var newCanvas = document.createElement("canvas");
+        newCanvas.width = width;
+        newCanvas.height = height;
+        var cx = newCanvas.getContext("2d");
+        //var imageData = cx.getImageData(0, 0, w, h);
+        //imageData.data = this.data();
+        cx.putImageData(newData, 0, 0);
+        return newCanvas;
     };
 }
 
-function dataToPixels(data) {
-    var pixels = [];
-    var length = data.length;
-    var index = 0;
-    for (var i = 0; i < length; i += 4) {
-        pixels.push(new Color(data[i], data[i+1], data[i+2], data[i+3]));
-    }
-    return pixels;
+// check that width and height arguments are positive integers
+function checkWidthAndHeight(width, height) {
+    if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0 || width != parseInt(width) || height != parseInt(height))
+            throw new Error("Arguments are not positive integers:\nwidth = " + width + " height = " + height);
 }
 
-Picture.prototype = {
-    constructor: Picture,
 
-    buildNewCanvas: function (w, h, pixels) {
-        var canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        var cx = canvas.getContext("2d");
-        var imageData = cx.getImageData(0, 0, w, h);
-        var data = imageData.data;
-        var length = pixels.length;
-        for (var i = 0; i < length; i++) {
-            var index = i * 4;
-            var color = pixels[i];
-            data[index]     = color.red;
-            data[index + 1] = color.green;
-            data[index + 2] = color.blue;
-            data[index + 3] = color.alpha;
-        }
-        cx.putImageData(imageData, 0, 0);
-        console.log(canvas);
-        return canvas;
+function ImageData() {
+    var i = 0;
+    if(arguments[0] instanceof Uint8ClampedArray) {
+        var data = arguments[i++];
     }
+    var width = arguments[i++];
+    var height = arguments[i];      
+
+    var canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    var ctx = canvas.getContext('2d');
+    var imageData = ctx.createImageData(width, height);
+    if(data) imageData.data.set(data);
+    return imageData;
 }
 
 module.exports = Picture;
-},{"./Color.js":1,"./Timer.js":4}],3:[function(require,module,exports){
+},{"./Color.js":1}],3:[function(require,module,exports){
 var Picture = require('./Picture.js');
-var Timer = require('./Timer.js');
+var Timer   = require('./Timer.js');
 
 function SeamCarver(pic) {
     this.picture = pic;
@@ -225,12 +170,13 @@ SeamCarver.prototype = {
     },
 
     buildEnergy: function() {
-        var energy = [];
         var W = this.width();
         var H = this.height();
+        var energy = new Array(W * H);
+        var index = 0;
         for (var y = 0; y < H; y++) {
             for (var x = 0; x < W; x++) {
-                energy[y * W + x] = this.calculateEnergyAt(x, y);
+                energy[index++] = this.calculateEnergyAt(x, y);
             }
         }
         return energy;
@@ -260,24 +206,38 @@ SeamCarver.prototype = {
         var timer = new Timer("1.         findVerticalSeam");
         var verticalSeam = this.findVerticalSeam();
         timer.logElapsedTime();
+        
+        timer = new Timer("3.              carveColumn");
+        this.carveColumn(verticalSeam);
+        timer.logElapsedTime();
+
         timer = new Timer("2. updateVerticalSeamEnergy");
         this.updateVerticalSeamEnergy(verticalSeam);   // must call this BEFORE removing seam or width will be one too short
         timer.logElapsedTime();
-        timer = new Timer("3.       removeVerticalSeam");
-        this.picture.removeVerticalSeam(verticalSeam);
+
+        /*
+        timer = new Timer("4.              buildEnergy");
+        this.energy = this.buildEnergy();
         timer.logElapsedTime();
+        */
         console.log("\n");
-        //this.energy = this.buildEnergy();
     },
 
     updateVerticalSeamEnergy: function(seam) {
-        var W = this.width();
+        var W = this.width() + 1;         // picture has already been carved and this needs the old width
         var H = this.height();
         var energy = this.energy;
-        for (var y = H - 1; y >= 0; y--) {
-            energy.splice(y * W + seam[y], 1);
+        var newEnergy = new Array((W - 1) * H);
+        var index = 0;
+        for (var y = 0; y < H; y++) {
+            for (var x = 0; x < W; x++) {
+                if (seam[y] != x) {
+                    newEnergy[index++] = energy[y * W + x];
+                }
+            }
         }
-        W--; // width is now one less
+        energy = newEnergy;
+        W--;                              // width is now correct
         for (var y = 1; y < H - 1; y++) { // skip first and last rows because they will not change
             if (seam[y] - 1 >= 0) {       // if in bounds, update energy on the left side of the seam
                 energy[y * W + seam[y] - 1] = this.calculateEnergyAt(seam[y] - 1, y);
@@ -286,6 +246,7 @@ SeamCarver.prototype = {
                 energy[y * W + seam[y]] = this.calculateEnergyAt(seam[y], y);
             }
         }
+        this.energy = energy;
     },
 
     findVerticalSeam: function() {
@@ -342,13 +303,34 @@ SeamCarver.prototype = {
 
     toCanvas: function() {
         return this.picture.toCanvas();
+    },
+
+    // returns a new picture object with the given vertical seam removed
+    carveColumn: function(seam) {
+        if (seam.length != this.height())
+            throw new Error("Invalid vertical seam length. Picture height = " + this.height() + " and Seam.length = " + seam.length);
+        var W = this.width();
+        var H = this.height();
+        var data = this.picture.data();
+        var newData = new Uint8ClampedArray((W - 1) * H * 4);
+
+        // copy data (minus seam) to newData
+        var newIndex = 0;
+        for (var y = 0; y < H; y++) {
+            for (var x = 0; x < W; x++) {
+                if (seam[y] != x) {
+                    var oldIndex = y * W * 4 + x * 4
+                    newData[newIndex++] = data[oldIndex++];    // Red
+                    newData[newIndex++] = data[oldIndex++];    // Green
+                    newData[newIndex++] = data[oldIndex++];    // Blue
+                    newData[newIndex++] = data[oldIndex];      // alpha
+                }
+            }
+        }
+        this.picture = new Picture(newData, W - 1, H);        
     }
 
 }
-
-
-
-
 
 module.exports = SeamCarver;
 },{"./Picture.js":2,"./Timer.js":4}],4:[function(require,module,exports){
@@ -435,6 +417,7 @@ function handleFiles() {
 
             // preview.appendChild(canvas);
             picture = new Picture(canvas); //!!! Here is the Picture test
+            // makePictureBlue();
             seamCarver = new SeamCarver(picture);
             // console.log("Energy for picture: ");
             // console.log(seamCarver.energy);
@@ -455,13 +438,45 @@ function makePictureBlue() {
             picture.set(w, h, blue);
         }
     }
-    canvas = picture.toCanvas();
-    preview.appendChild(canvas);
-    var colorCheck = picture.at(2,7);
-    console.log("Color at 2,7 is " + colorCheck);
-    console.log("alpha = " + colorCheck.alpha);
+    newCanvas = picture.toCanvas();
+    preview.appendChild(newCanvas);
+    console.log("newCanvas width  = " + newCanvas.width);
+    console.log("newCanvas height = " + newCanvas.height);
+    var data = picture.data();
+    for (var i = 0; i < data.length; i++) {
+        data[i++] = 94;
+        data[i++] = 133;
+        data[i++] = 72;
+        data[i]   = 255;
+    }
+    var dataPicture = new Picture(data, W, H);
+    newestCanvas = dataPicture.toCanvas();
+    preview.appendChild(newestCanvas);
+    console.log("newestCanvas width  = " + newestCanvas.width);
+    console.log("newestCanvas height = " + newestCanvas.height);
+
+
 }
 
+function carveToSquare() {
+    //logEnergy(seamCarver);
+    var totalTimer = new Timer("\ncarveToSquare");
+    while (seamCarver.width() > seamCarver.height()) {
+        console.log("____________");
+        var timer = new Timer("Whole seam removal operation");
+        seamCarver.removeVerticalSeam();
+        timer.logElapsedTime();
+        console.log("____________\n\n\n");
+    }
+    totalTimer.logElapsedTime();
+    //seamCarver.removeVerticalSeam();
+    //console.log("\n...removing one vertical seam...");
+    //logEnergy(seamCarver);
+    var carvedCanvas = seamCarver.toCanvas();
+    preview.appendChild(carvedCanvas);
+}
+
+/*
 function cropToSquare() {
     if (picture.width() > picture.height()) {
         console.log("original width: " + picture.width());
@@ -481,21 +496,6 @@ function cropToSquare() {
     }
 }
 
-function carveToSquare() {
-    //logEnergy(seamCarver);
-    while (seamCarver.width() > seamCarver.height()) {
-        console.log("____________");
-        var timer = new Timer("Whole seam removal operation");
-        seamCarver.removeVerticalSeam();
-        timer.logElapsedTime();
-        console.log("____________\n\n\n")
-    }
-    //seamCarver.removeVerticalSeam();
-    //console.log("\n...removing one vertical seam...");
-    //logEnergy(seamCarver);
-    var carvedCanvas = seamCarver.toCanvas();
-    preview.appendChild(carvedCanvas);
-}
 
 function logEnergy(carver) {
     var W = seamCarver.width();
@@ -529,7 +529,7 @@ function logPixelData() {
     }
     cx.putImageData(imageData, 0, 0);
 }
-
+*/
 
 
 // helper function that creates a DOM element and assigns attributes
